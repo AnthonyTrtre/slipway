@@ -16,9 +16,9 @@ final class Controleur {
     private(set) var decouverts: [MacDecouvert] = []
     private(set) var erreurDemarrage: String?
     private(set) var permissionsOK = Permissions.toutes
-    /// Rôle de ce Mac, mémorisé : principal par défaut.
-    var principal: Bool = UserDefaults.standard.object(forKey: "principal") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(principal, forKey: "principal"); moteur?.definirPrincipal(principal) }
+    /// Rôle de ce Mac, mémorisé : principal par défaut. Changé ici, l'autre Mac prend le rôle inverse (et réciproquement).
+    private(set) var principal: Bool = UserDefaults.standard.object(forKey: "principal") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(principal, forKey: "principal") }
     }
     private(set) var saisieSecurisee: String?
     private(set) var captureActive = false
@@ -32,6 +32,7 @@ final class Controleur {
     @ObservationIgnored private let curseur = CurseurMac()
     @ObservationIgnored private let magasin = MagasinPairsMac()
     @ObservationIgnored private var minuteurMoteur: DispatchSourceTimer?
+    @ObservationIgnored private var minuteurVidage: DispatchSourceTimer?
     @ObservationIgnored private var minuteurLent: Timer?
     @ObservationIgnored private var observateurs: [NSObjectProtocol] = []
 
@@ -76,6 +77,12 @@ final class Controleur {
         minuteur.setEventHandler { @Sendable [moteur] in moteur.tic() }  // hors du fil principal : jamais isolée au MainActor
         minuteur.resume()
         minuteurMoteur = minuteur
+        // Mouvements de souris fusionnés : partis au plus tard 4 ms après le précédent.
+        let vidage = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInteractive))
+        vidage.schedule(deadline: .now(), repeating: .milliseconds(4), leeway: .milliseconds(1))
+        vidage.setEventHandler { @Sendable [moteur] in moteur.viderMouvements() }
+        vidage.resume()
+        minuteurVidage = vidage
 
         minuteurLent = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.ticLent() }
@@ -111,6 +118,7 @@ final class Controleur {
             UserDefaults.standard.set(data, forKey: Self.cleDisposition)
         }
         instantane = nouveau
+        if nouveau.principal != principal { principal = nouveau.principal }   // changé depuis l'autre Mac
         decouverts = reseau?.decouverts ?? []
         erreursReseau = reseau?.erreurs ?? []
     }
@@ -134,6 +142,7 @@ final class Controleur {
     // MARK: - Commandes de l'interface
 
     func toutRendreLocal() { moteur?.toutRendreLocal(raison: .panique) }
+    func choisirPrincipal(_ oui: Bool) { principal = oui; moteur?.definirPrincipal(oui, propager: true); rafraichir() }
     func basculer(vers id: IdPair) { moteur?.basculerVers(id) }
     func confirmerAppairage(_ id: IdConnexion, accepte: Bool) { moteur?.confirmerAppairage(id, accepte: accepte) }
     /// Appairer ou connecter à la main ouvre aussi l'appairage ici (un Mac inconnu n'est accepté qu'ainsi).
@@ -152,6 +161,7 @@ final class Controleur {
         capture?.arreter()
         curseur.restaurer()
         minuteurMoteur?.cancel()
+        minuteurVidage?.cancel()
         reseau?.arreter()
     }
 }

@@ -202,6 +202,7 @@ struct PilotageTests {
         #expect(banc.b.moteur.instantane().mode == .piloteePar(banc.a.id))
         #expect(banc.b.injecteur.mouvements == [Point(x: 4, y: 449)])
         for _ in 0..<10 {
+            banc.horloge.avancer(0.005)   // souris à 200 Hz : chaque mouvement part seul
             #expect(banc.a.moteur.evenementLocal(.mouvement(position: Point(x: 1511, y: 400), delta: Point(x: 1.5, y: 0.25))))
         }
         banc.reseau.pomper()
@@ -209,6 +210,56 @@ struct PilotageTests {
         #expect(abs(derniere.x - 19) < 0.001 && abs(derniere.y - 451.5) < 0.001)
         // Le canal temps réel a bien servi (pas de repli TCP).
         #expect(banc.lienA.canal.withLock { $0 }!.envoyes.withLock { $0 } >= 10)
+    }
+
+    @Test func souris1000HzFusionneeA250ParSeconde() throws {
+        var banc = Banc()
+        banc.connecter()
+        _ = banc.passerSurB()
+        let canal = try #require(banc.lienA.canal.withLock { $0 })
+        banc.b.injecteur.vider()
+        let avant = canal.envoyes.withLock { $0 }
+        for _ in 0..<100 {   // 100 ms d'une souris à 1000 Hz
+            banc.horloge.avancer(0.001)
+            _ = banc.a.moteur.evenementLocal(.mouvement(position: .zero, delta: Point(x: 1, y: 0)))
+            banc.a.moteur.viderMouvements()
+        }
+        banc.horloge.avancer(0.005)
+        banc.a.moteur.viderMouvements()
+        banc.reseau.pomper()
+        let envoyes = canal.envoyes.withLock { $0 } - avant
+        #expect(envoyes >= 20 && envoyes <= 30)
+        #expect(banc.b.injecteur.mouvements.last == Point(x: 104, y: 449))   // rien de perdu
+    }
+
+    @Test func clicPartApresLeDernierMouvementEnAttente() throws {
+        var banc = Banc()
+        banc.connecter()
+        _ = banc.passerSurB()
+        banc.b.injecteur.vider()
+        banc.horloge.avancer(0.005)
+        _ = banc.a.moteur.evenementLocal(.mouvement(position: .zero, delta: Point(x: 1, y: 0)))
+        _ = banc.a.moteur.evenementLocal(.mouvement(position: .zero, delta: Point(x: 2, y: 0)))   // fusionné, en attente
+        _ = banc.a.moteur.evenementLocal(.bouton(.gauche, enfonce: true, nbClics: 1, position: .zero))
+        banc.reseau.pomper()
+        #expect(banc.b.injecteur.mouvements.last == Point(x: 7, y: 449))
+    }
+
+    @Test func roleChoisiSurUnMacInverseSurLAutre() {
+        var banc = Banc()
+        banc.connecter()
+        banc.b.moteur.definirPrincipal(true, propager: true)
+        banc.reseau.pomper()
+        #expect(banc.b.moteur.instantane().principal)
+        #expect(!banc.a.moteur.instantane().principal)
+        banc.b.moteur.definirPrincipal(false, propager: true)
+        banc.reseau.pomper()
+        #expect(!banc.b.moteur.instantane().principal)
+        #expect(banc.a.moteur.instantane().principal)
+        // Au démarrage (rôle relu des préférences), rien n'est envoyé.
+        banc.a.moteur.definirPrincipal(false)
+        banc.reseau.pomper()
+        #expect(!banc.b.moteur.instantane().principal)
     }
 
     @Test func clavierEtClicsChezLePilote() {
@@ -279,12 +330,14 @@ struct PilotageTests {
         _ = banc.passerSurB()
         banc.reseau.perteUDP.withLock { $0 = 0.2 }
         for i in 0..<300 {
+            banc.horloge.avancer(0.005)
             _ = banc.a.moteur.evenementLocal(.mouvement(position: .zero, delta: Point(x: i % 2 == 0 ? 0.7 : -0.3, y: 0.1)))
         }
         banc.reseau.pomper()
         let recus = banc.b.injecteur.mouvements.count
         #expect(recus > 150 && recus < 300)
         banc.reseau.perteUDP.withLock { $0 = 0 }
+        banc.horloge.avancer(0.005)
         _ = banc.a.moteur.evenementLocal(.mouvement(position: .zero, delta: Point(x: 0.5, y: 0)))
         banc.reseau.pomper()
         let derniere = try #require(banc.b.injecteur.mouvements.last)

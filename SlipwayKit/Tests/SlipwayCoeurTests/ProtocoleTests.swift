@@ -25,6 +25,7 @@ enum Exemples {
             PlaceDecrite(id: [0xAA, 1, 2, 3, 4, 5, 6, 7], x: 0, y: 0),
             PlaceDecrite(id: [0xBB, 1, 2, 3, 4, 5, 6, 7], x: 1512, y: -49),
         ])), "révision u64 | nombre u8 | pour chaque Mac : identifiant (8 octets), décalage x f32, décalage y f32"),
+        ("role", Trame(sequence: 4, message: .role(principal: true)), "principal u8 (1 = l'expéditeur devient principal)"),
         ("entree", Trame(sequence: 5, message: .entree(Entree(x: 0.5, y: 431.25, modificateurs: [.majGauche]))),
          "x f32 | y f32 | modificateurs u32 (bit 1 = Maj gauche)"),
         ("sortie", Trame(sequence: 6, message: .sortie(.panique)), "raison u8 = 1 (panique)"),

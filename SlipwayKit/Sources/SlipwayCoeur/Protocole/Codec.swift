@@ -63,6 +63,8 @@ public enum Codec {
             e.u64(revision)
             e.u8(UInt8(liste.count))
             for p in liste { e.brut(fixe(p.id, 8)); e.f32(p.x); e.f32(p.y) }
+        case .role(let principal):
+            e.booleen(principal)
         case .entree(let en):
             e.f32(en.x); e.f32(en.y); e.u32(en.modificateurs.rawValue)
         case .sortie(let raison):
@@ -126,6 +128,8 @@ public enum Codec {
             var places: [PlaceDecrite] = []
             for _ in 0..<n { places.append(PlaceDecrite(id: try l.brut(8), x: try l.f32(), y: try l.f32())) }
             return .disposition(revision: revision, places: places)
+        case .role:
+            return .role(principal: try l.booleen())
         case .entree:
             return .entree(Entree(x: try l.f32(), y: try l.f32(), modificateurs: Modificateurs(rawValue: try l.u32())))
         case .sortie:

@@ -112,6 +112,7 @@ public final class InjecteurMac: InjecteurEntrees, @unchecked Sendable {
 public final class CurseurMac: CurseurLocal, @unchecked Sendable {
     private let masque = Mutex(false)
     private let gele = Mutex<CGPoint?>(nil)
+    private let recadrage = Mutex(false)
     private let appPrecedente = Mutex<NSRunningApplication?>(nil)
 
     public init() {}
@@ -136,11 +137,18 @@ public final class CurseurMac: CurseurLocal, @unchecked Sendable {
         }
     }
 
-    /// Pendant le pilotage d'un autre Mac : remet le curseur local à son point de sortie s'il a bougé.
+    /// Pendant le pilotage d'un autre Mac : remet le curseur local à son point de sortie s'il a bougé. Hors du fil de
+    /// capture et au plus toutes les 8 ms : un déplacement forcé à chaque événement ralentissait le tap (à-coups).
     public func maintenir() {
-        guard let p = gele.withLock({ $0 }), let ici = CGEvent(source: nil)?.location, ici != p else { return }
-        CGWarpMouseCursorPosition(p)
-        CGAssociateMouseAndMouseCursorPosition(0)   // réaffirme le gel et lève le délai qui suit un déplacement forcé
+        guard gele.withLock({ $0 != nil }) else { return }
+        let deja = recadrage.withLock { r -> Bool in defer { r = true }; return r }
+        guard !deja else { return }
+        DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 0.008) { [self] in
+            recadrage.withLock { $0 = false }
+            guard let p = gele.withLock({ $0 }), let ici = CGEvent(source: nil)?.location, ici != p else { return }
+            CGWarpMouseCursorPosition(p)
+            CGAssociateMouseAndMouseCursorPosition(0)   // réaffirme le gel et lève le délai qui suit un déplacement forcé
+        }
     }
 
     public func liberer(a point: Point) {

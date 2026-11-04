@@ -56,6 +56,8 @@ public struct Instantane: Equatable, Sendable {
     public var appairageOuvert: Double? = nil
     /// Dernière demande d'appairage refusée faute d'appairage ouvert ici (nom et adresse).
     public var demandeRefusee: String? = nil
+    /// Rôle de ce Mac (il peut changer quand l'autre Mac change le sien).
+    public var principal = true
 }
 
 /// Chef d'orchestre de Slipway, sans aucune entrée-sortie propre : il relie la session (machine à états),
@@ -79,6 +81,7 @@ public final class Moteur: Sendable {
         var pertes = CompteurPertes()
         var assembleur = AssembleurPressePapiers()
         var fusion = FusionMouvements()
+        var dernierMouvement: Double = -1
         var idPair: IdPair? { materiel?.idPair }
     }
 
@@ -122,6 +125,9 @@ public final class Moteur: Sendable {
     static let maxNonEtablies = 8
     /// Intervalle des battements de cœur (et de mesure de latence).
     public static let intervallePing = 0.25
+    /// Au plus un mouvement par datagramme toutes les 4 ms (250 par seconde) : une souris à 1000 Hz saturait le Wi-Fi
+    /// de petits paquets, d'où des à-coups. Les mouvements intermédiaires sont fusionnés (positions absolues, rien ne se perd).
+    public static let intervalleMouvement = 0.004
 
     public init(config: ConfigurationMoteur, horloge: Horloge = HorlogeSysteme(), injecteur: InjecteurEntrees, curseur: CurseurLocal,
                 pressePapiers: PressePapiersLocal, magasin: MagasinPairs, observateur: ObservateurMoteur, alea: SourceAlea = AleaSysteme()) {
@@ -162,8 +168,31 @@ public final class Moteur: Sendable {
     }
 
     /// Principal (sa souris passe sur les autres Mac) ou secondaire (il se laisse seulement piloter).
-    public func definirPrincipal(_ oui: Bool) {
-        commande { s, _ in s.session.principal = oui; return oui ? [] : s.session.toutRendreLocal(raison: .bascule) }
+    /// `propager` : choix fait à la main ici, envoyé aux pairs connectés qui prennent le rôle inverse.
+    public func definirPrincipal(_ oui: Bool, propager: Bool = false) {
+        commande { s, _ in
+            var actions = appliquerRole(oui, dans: &s)
+            if propager {
+                actions += s.connexions.values.filter { $0.phase == .etablie }.compactMap(\.idPair).sorted().map { .envoyer(.role(principal: oui), a: $0) }
+            }
+            return actions
+        }
+    }
+
+    private func appliquerRole(_ oui: Bool, dans s: inout Etat) -> [Action] {
+        s.session.principal = oui
+        return oui ? [] : s.session.toutRendreLocal(raison: .bascule)
+    }
+
+    /// Envoie les mouvements fusionnés dont le délai est passé. À appeler toutes les 4 ms environ.
+    public func viderMouvements() {
+        let t = horloge.maintenant()
+        etat.withLock { s in
+            for id in s.connexions.keys.sorted() {
+                guard let c = s.connexions[id], !c.fusion.estVide, t - c.dernierMouvement >= Self.intervalleMouvement else { continue }
+                viderFusion(id, dans: &s, t: t)
+            }
+        }
     }
 
     /// Ouvre (ou referme) l'appairage d'un nouveau Mac sur ce Mac pour `Moteur.dureeAppairage` secondes.
@@ -294,7 +323,7 @@ public final class Moteur: Sendable {
             guard let pair = c.idPair else { return [] }
             switch trame.message {
             case .ping(let h):
-                envoyerTempsReel(.pong(horodatage: h), connexion: id, dans: &s)
+                envoyerTempsReel(.pong(horodatage: h), connexion: id, dans: &s, t: t)
                 return s.session.recevoir(.ping(horodatage: h), de: pair, sequence: trame.sequence, t: t)
             case .pong(let h):
                 s.connexions[id]?.latence.ajouter(allerRetour: t - Double(h) / 1e9)
@@ -330,14 +359,10 @@ public final class Moteur: Sendable {
                 s.dernierPing = t
                 let h = UInt64(max(0, t) * 1e9)
                 for id in s.connexions.keys.sorted() where s.connexions[id]?.phase == .etablie {
-                    envoyerTempsReel(.ping(horodatage: h), connexion: id, dans: &s)
+                    envoyerTempsReel(.ping(horodatage: h), connexion: id, dans: &s, t: t)
                 }
             }
-            for id in s.connexions.keys.sorted() {
-                guard var c = s.connexions[id], let canal = c.canal, !canal.estSature, let m = c.fusion.prendre() else { continue }
-                s.connexions[id] = c
-                envoyerTempsReel(.mouvement(m), connexion: id, dans: &s)
-            }
+            for id in s.connexions.keys.sorted() { viderFusion(id, dans: &s, t: t) }
             // Connexions jamais authentifiées (10 s) ou appairage laissé en plan (2 min) : fermées.
             for c in s.connexions.values.sorted(by: { $0.id < $1.id }) where c.phase != .etablie {
                 let limite = c.phase == .poigneeDeMain ? Self.delaiPoigneeDeMain : Self.dureeAppairage
@@ -392,7 +417,8 @@ public final class Moteur: Sendable {
             let t = horloge.maintenant()
             return Instantane(moi: moi, mode: s.session.mode, pairs: pairs, appairages: appairages, disposition: s.session.disposition,
                               journal: s.journal.elements, mouvementsPerimes: s.session.mouvementsPerimes, datagrammesRejetes: rejetes,
-                              appairageOuvert: t <= s.appairageOuvertJusqua ? s.appairageOuvertJusqua - t : nil, demandeRefusee: s.demandeRefusee)
+                              appairageOuvert: t <= s.appairageOuvertJusqua ? s.appairageOuvertJusqua - t : nil, demandeRefusee: s.demandeRefusee,
+                              principal: s.session.principal)
         }
     }
 
@@ -435,9 +461,10 @@ public final class Moteur: Sendable {
         while let a = file.popFirst() {
             switch a {
             case .envoyer(let m, let pair):
-                if let id = connexionEtablie(pour: pair, dans: s) { envoyerFiable(m, connexion: id, dans: &s) }
+                // Un clic ou une touche ne doit pas doubler le dernier mouvement encore en attente.
+                if let id = connexionEtablie(pour: pair, dans: s) { viderFusion(id, dans: &s, t: t); envoyerFiable(m, connexion: id, dans: &s) }
             case .envoyerTempsReel(let m, let pair):
-                if let id = connexionEtablie(pour: pair, dans: s) { envoyerTempsReel(m, connexion: id, dans: &s) }
+                if let id = connexionEtablie(pour: pair, dans: s) { envoyerTempsReel(m, connexion: id, dans: &s, t: t) }
             case .figerCurseurLocal: effets.append(.figer)
             case .libererCurseurLocal(let p): effets.append(.liberer(p))
             case .injecter(let i): effets.append(.injecter(i))
@@ -475,17 +502,20 @@ public final class Moteur: Sendable {
         c.lien.envoyer(enregistrement)
     }
 
+    /// Envoie le mouvement fusionné en attente, si le canal le permet.
+    private func viderFusion(_ id: IdConnexion, dans s: inout Etat, t: Double) {
+        guard var c = s.connexions[id], !c.fusion.estVide, c.canal?.estSature != true, let m = c.fusion.prendre() else { return }
+        s.connexions[id] = c
+        envoyerTempsReel(.mouvement(m), connexion: id, dans: &s, t: t, immediat: true)
+    }
+
     /// Canal temps réel si disponible, sinon repli sur le canal fiable (pare-feu qui bloque l'UDP).
-    private func envoyerTempsReel(_ m: Message, connexion id: IdConnexion, dans s: inout Etat) {
+    private func envoyerTempsReel(_ m: Message, connexion id: IdConnexion, dans s: inout Etat, t: Double, immediat: Bool = false) {
         guard var c = s.connexions[id] else { return }
-        guard let canal = c.canal, var dg = c.datagrammes else {
-            if case .ping = m { return }   // sans UDP, le canal fiable suffit à prouver que le lien vit
-            envoyerFiable(m, connexion: id, dans: &s)
-            return
-        }
         var message = m
         if case .mouvement(let mv) = m {
-            if canal.estSature {
+            // Trop tôt depuis le dernier envoi, ou canal saturé : fusionné, parti au prochain `viderMouvements`.
+            if c.canal?.estSature == true || (!immediat && t - c.dernierMouvement < Self.intervalleMouvement) {
                 c.fusion.ajouter(mv)
                 s.connexions[id] = c
                 return
@@ -494,6 +524,13 @@ public final class Moteur: Sendable {
                 c.fusion.ajouter(mv)
                 if let fusionne = c.fusion.prendre() { message = .mouvement(fusionne) }
             }
+            c.dernierMouvement = t
+            s.connexions[id] = c
+        }
+        guard let canal = c.canal, var dg = c.datagrammes else {
+            if case .ping = message { return }   // sans UDP, le canal fiable suffit à prouver que le lien vit
+            envoyerFiable(message, connexion: id, dans: &s)
+            return
         }
         c.sequenceTempsReel &+= 1
         let datagramme = dg.sceller(Codec.encoder(Trame(sequence: c.sequenceTempsReel, message: message)))
@@ -546,6 +583,14 @@ public final class Moteur: Sendable {
         case .ecrans(let liste):
             guard c.phase == .etablie, let pair = c.idPair else { return [] }
             s.session.mettreAJourEcrans(liste.map(Ecran.init), de: pair, nom: c.materiel?.nomPair ?? "")
+        case .role(let principalLabas):
+            guard c.phase == .etablie else { return [] }
+            // L'autre devient principal : ce Mac passe secondaire. Il devient secondaire : ce Mac reprend la main,
+            // seulement s'il n'y a que lui en face (avec plusieurs Mac, on ne devine pas lequel doit piloter).
+            let pairs = s.connexions.values.filter { $0.phase == .etablie }.count
+            guard principalLabas || pairs == 1, s.session.principal == principalLabas else { break }
+            return appliquerRole(!principalLabas, dans: &s)
+                + [.journal("\(c.materiel?.nomPair ?? "L'autre Mac") est passé \(principalLabas ? "principal" : "secondaire") : ce Mac devient \(principalLabas ? "secondaire" : "principal")")]
         case .disposition(let revision, let places):
             guard c.phase == .etablie else { return [] }
             if s.session.dispositionRecue(revision: revision, places: places) {
@@ -591,7 +636,7 @@ public final class Moteur: Sendable {
         if disposition.revision > 0 {
             envoyerFiable(.disposition(revision: disposition.revision, places: disposition.placesDecrites), connexion: id, dans: &s)
         }
-        if c.canal != nil { envoyerTempsReel(.ping(horodatage: UInt64(max(0, t) * 1e9)), connexion: id, dans: &s) }
+        if c.canal != nil { envoyerTempsReel(.ping(horodatage: UInt64(max(0, t) * 1e9)), connexion: id, dans: &s, t: t) }
         actions.append(.journal(nouveauPair ? "Nouveau Mac appairé : \(m.nomPair)" : "Mac reconnu : \(m.nomPair)"))
         return actions
     }

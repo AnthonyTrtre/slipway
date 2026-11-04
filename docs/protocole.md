@@ -95,6 +95,7 @@ Seuls `Ping`, `Pong`, `Mouvement` et `Defilement` sont admis sur ce canal ; les 
 | 0x06 | AuRevoir | fiable (clair seulement pour un refus de version) | raison u8 · texte long (≤ 512 octets) |
 | 0x07 | Ecrans | fiable | nombre u8 (≤ 32) · pour chaque écran : id u32 · x f32 · y f32 · largeur f32 · hauteur f32 · échelle f32 · principal bool |
 | 0x08 | Disposition | fiable | révision u64 · nombre u8 (≤ 32) · pour chaque Mac : identifiant (8 octets) · décalage x f32 · décalage y f32 |
+| 0x09 | Rôle | fiable | principal u8 (1 = l'expéditeur devient principal, 0 = secondaire) ; envoyé quand on change le rôle à la main, le pair prend le rôle inverse |
 | 0x10 | Entree | fiable | x f32 · y f32 · modificateurs u32 |
 | 0x11 | Sortie | fiable | raison u8 |
 | 0x12 | Bouton | fiable | bouton u8 (< 32) · enfoncé bool · nombre de clics u8 · x f32 · y f32 |

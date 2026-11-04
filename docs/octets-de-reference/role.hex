@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : role
+# principal u8 (1 = l'expéditeur devient principal)
+# 9 octets
+# en-tête : type 0x09, drapeaux 0, longueur 1, séquence 4
+09 00 01 00 04 00 00 00
+# charge
+01

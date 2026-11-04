@@ -37,6 +37,7 @@ public enum TypeMessage: UInt8, Sendable, CaseIterable {
     case auRevoir = 0x06
     case ecrans = 0x07
     case disposition = 0x08
+    case role = 0x09
     case entree = 0x10
     case sortie = 0x11
     case bouton = 0x12
@@ -260,6 +261,8 @@ public enum Message: Equatable, Sendable {
     case ecrans([EcranDecrit])
     /// Disposition partagée : la révision la plus grande l'emporte (0 = placement automatique, jamais envoyé).
     case disposition(revision: UInt64, places: [PlaceDecrite])
+    /// Rôle choisi à la main sur l'expéditeur (principal ou secondaire) : l'autre Mac prend le rôle inverse.
+    case role(principal: Bool)
     case entree(Entree)
     case sortie(RaisonSortie)
     case bouton(EvenementBouton)
@@ -285,6 +288,7 @@ public enum Message: Equatable, Sendable {
         case .auRevoir: TypeMessage.auRevoir.rawValue
         case .ecrans: TypeMessage.ecrans.rawValue
         case .disposition: TypeMessage.disposition.rawValue
+        case .role: TypeMessage.role.rawValue
         case .entree: TypeMessage.entree.rawValue
         case .sortie: TypeMessage.sortie.rawValue
         case .bouton: TypeMessage.bouton.rawValue

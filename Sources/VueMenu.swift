@@ -29,7 +29,7 @@ struct VueMenu: View {
             macsDecouverts
             appairage
             Divider()
-            Picker("Ce Mac", selection: Binding(get: { controleur.principal }, set: { controleur.principal = $0 })) {
+            Picker("Ce Mac", selection: Binding(get: { controleur.principal }, set: { controleur.choisirPrincipal($0) })) {
                 Text("Principal").tag(true)
                 Text("Secondaire").tag(false)
             }
