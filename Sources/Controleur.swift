@@ -35,6 +35,9 @@ final class Controleur {
     @ObservationIgnored private var minuteurVidage: DispatchSourceTimer?
     @ObservationIgnored private var minuteurLent: Timer?
     @ObservationIgnored private var observateurs: [NSObjectProtocol] = []
+    /// Tant qu'un autre Mac est relié, ce Mac ne s'endort pas de lui-même (l'écran peut s'éteindre) : endormi, il
+    /// quitterait le Wi-Fi et la souris ne pourrait plus y passer.
+    @ObservationIgnored private var activiteEveil: NSObjectProtocol?
 
     static let cleDisposition = "disposition"
     static var sousTest: Bool { ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil }
@@ -118,6 +121,13 @@ final class Controleur {
             UserDefaults.standard.set(data, forKey: Self.cleDisposition)
         }
         instantane = nouveau
+        let relie = !nouveau.pairs.isEmpty
+        if relie, activiteEveil == nil {
+            activiteEveil = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "Slipway : un autre Mac est relié")
+        } else if !relie, let a = activiteEveil {
+            ProcessInfo.processInfo.endActivity(a)
+            activiteEveil = nil
+        }
         if nouveau.principal != principal { principal = nouveau.principal }   // changé depuis l'autre Mac
         decouverts = reseau?.decouverts ?? []
         erreursReseau = reseau?.erreurs ?? []
