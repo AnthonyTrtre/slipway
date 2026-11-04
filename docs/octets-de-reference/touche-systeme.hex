@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : touche-systeme
+# usage HID consommateur u16 = 0x00E9 (volume +) | enfoncé u8 | répétition u8
+# 12 octets
+# en-tête : type 0x14, drapeaux 0, longueur 4, séquence 9
+14 00 04 00 09 00 00 00
+# charge
+e9 00 01 01

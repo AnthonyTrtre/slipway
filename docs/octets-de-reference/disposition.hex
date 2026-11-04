@@ -1,0 +1,9 @@
+# Slipway, protocole v1 : disposition
+# révision u64 | nombre u8 | pour chaque Mac : identifiant (8 octets), décalage x f32, décalage y f32
+# 49 octets
+# en-tête : type 0x08, drapeaux 0, longueur 41, séquence 4
+08 00 29 00 04 00 00 00
+# charge
+03 00 00 00 00 00 00 00 02 aa 01 02 03 04 05 06
+07 00 00 00 00 00 00 00 00 bb 01 02 03 04 05 06
+07 00 00 bd 44 00 00 44 c2

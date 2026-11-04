@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : ping
+# horodatage u64 (nanosecondes, horloge de l'émetteur)
+# 16 octets
+# en-tête : type 0x30, drapeaux 0, longueur 8, séquence 13
+30 00 08 00 0d 00 00 00
+# charge
+cb 04 fb 71 1f 01 00 00

@@ -1,0 +1,5 @@
+# Slipway, protocole v1 : tout-relacher
+# charge vide
+# 8 octets
+# en-tête : type 0x15, drapeaux 0, longueur 0, séquence 10
+15 00 00 00 0a 00 00 00

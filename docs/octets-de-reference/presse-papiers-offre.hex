@@ -1,0 +1,8 @@
+# Slipway, protocole v1 : presse-papiers-offre
+# id de transfert u32 | format u8 = 1 (texte UTF-8) | taille u32 | empreinte FNV-1a u64
+# 25 octets
+# en-tête : type 0x20, drapeaux 0, longueur 17, séquence 11
+20 00 11 00 0b 00 00 00
+# charge
+03 00 00 00 01 06 00 00 00 3d 60 8c bb 18 27 79
+11

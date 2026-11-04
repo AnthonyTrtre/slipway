@@ -1,0 +1,8 @@
+*.xcodeproj
+.build/
+DerivedData/
+build/
+.DS_Store
+SlipwayKit/.swiftpm/
+SlipwayKit/Package.resolved
+graphify-out/

@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : bouton
+# bouton u8 = 0 (gauche) | enfoncé u8 | nombre de clics u8 = 2 | x f32 | y f32
+# 19 octets
+# en-tête : type 0x12, drapeaux 0, longueur 11, séquence 7
+12 00 0b 00 07 00 00 00
+# charge
+00 01 02 00 00 c9 42 00 40 48 43

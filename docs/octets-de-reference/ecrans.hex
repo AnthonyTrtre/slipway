@@ -1,0 +1,10 @@
+# Slipway, protocole v1 : ecrans
+# nombre u8 | pour chaque écran : id u32, x f32, y f32, largeur f32, hauteur f32, échelle f32, principal u8
+# 59 octets
+# en-tête : type 0x07, drapeaux 0, longueur 51, séquence 4
+07 00 33 00 04 00 00 00
+# charge
+02 01 00 00 00 00 00 00 00 00 00 00 00 00 00 bd
+44 00 80 75 44 00 00 00 40 01 07 00 00 00 00 00
+f0 c4 00 00 c4 c2 00 00 f0 44 00 00 87 44 00 00
+80 3f 00

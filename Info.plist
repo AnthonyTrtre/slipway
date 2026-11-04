@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_slipway._tcp</string>
+	</array>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Utahpik · licence MIT</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Slipway relie ce Mac à vos autres Mac du réseau local pour partager la souris, le clavier et le presse-papiers. Aucune connexion vers Internet.</string>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/AnthonyTrtre/slipway/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>YYCtfO+MA/QLJetStJExh29xbOZyqGKn45WmD6frP98=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,99 @@
+# CI de Slipway.
+# - macOS : génère le projet (XcodeGen), lance les tests de SlipwayKit, compile et teste l'app, puis vérifie
+#   qu'elle démarre et reste en barre de menus.
+# - Linux : `swift test` sur la logique pure (protocole, géométrie, session, sécurité avec swift-crypto, moteur).
+# Aucune signature sur la CI (pas de certificat) : l'app est signée « ad hoc » par l'éditeur de liens.
+name: Slipway
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slipway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS (XcodeGen, compilation, tests, lancement)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Choisir le Xcode le plus récent
+        run: |
+          XCODE="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$XCODE"
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Installer XcodeGen
+        run: brew install xcodegen && xcodegen --version
+
+      - name: Tests de SlipwayKit (swift test)
+        working-directory: SlipwayKit
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee "$RUNNER_TEMP/swift-test.log" | grep -vE "^(◇|✔)" || {
+            echo "::group::Échecs"; grep -E "recorded an issue|error:" "$RUNNER_TEMP/swift-test.log"; echo "::endgroup::"; exit 1; }
+
+      - name: Générer le projet
+        run: xcodegen generate
+
+      - name: Compiler et tester l'app
+        run: |
+          set -o pipefail
+          xcodebuild -project Slipway.xcodeproj -scheme Slipway -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM= \
+            test 2>&1 | tee "$RUNNER_TEMP/xcodebuild-test.log" | grep -E "error:|warning: |Test Suite|Executed|passed|failed|\*\*" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" "$RUNNER_TEMP/xcodebuild-test.log"
+
+      - name: Compiler en Release
+        run: |
+          set -o pipefail
+          xcodebuild -project Slipway.xcodeproj -scheme Slipway -configuration Release -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO DEVELOPMENT_TEAM= \
+            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-release.log" | grep -E "error:|warning: |\*\*" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" "$RUNNER_TEMP/xcodebuild-release.log"
+
+      - name: L'app démarre et reste en barre de menus
+        run: |
+          APP="$RUNNER_TEMP/dd/Build/Products/Release/Slipway.app"
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
+          "$APP/Contents/MacOS/Slipway" > "$RUNNER_TEMP/lancement.log" 2>&1 &
+          PID=$!
+          sleep 10
+          if kill -0 "$PID" 2>/dev/null; then
+            echo "Slipway tourne toujours après 10 s (PID $PID)."
+            kill "$PID"
+          else
+            echo "Slipway s'est arrêté :"; cat "$RUNNER_TEMP/lancement.log"; exit 1
+          fi
+
+      - name: Journaux en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: journaux-macos
+          path: ${{ runner.temp }}/*.log
+
+  linux:
+    name: Linux (swift test)
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Tests de SlipwayKit
+        working-directory: SlipwayKit
+        run: swift test

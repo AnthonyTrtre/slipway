@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : presse-papiers-morceau
+# id de transfert u32 | décalage u32 | octets (reste de la charge)
+# 22 octets
+# en-tête : type 0x21, drapeaux 0, longueur 14, séquence 12
+21 00 0e 00 0c 00 00 00
+# charge
+03 00 00 00 00 00 00 00 53 61 6c 75 74 21

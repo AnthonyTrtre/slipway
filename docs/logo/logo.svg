@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="180" y1="100" x2="800" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F17C59"/>
+      <stop offset=".48" stop-color="#DB513C"/>
+      <stop offset="1" stop-color="#B93332"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="310" y1="100" x2="680" y2="924" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD7B9" stop-opacity=".75"/>
+      <stop offset=".44" stop-color="#F9AA8C" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#7F2429" stop-opacity=".55"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="280" y1="320" x2="720" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A13537"/>
+      <stop offset="1" stop-color="#702B36"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="400" y1="325" x2="610" y2="695" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC9AA" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#F5A38B" stop-opacity=".5"/>
+    </linearGradient>
+    <linearGradient id="ivory" x1="466" y1="401" x2="530" y2="660" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFCED"/>
+      <stop offset=".6" stop-color="#FFF2D7"/>
+      <stop offset="1" stop-color="#F7D5AE"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="18" stdDeviation="19" flood-color="#491D25" flood-opacity=".23"/>
+    </filter>
+    <filter id="lift" x="210" y="300" width="610" height="440" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="9" flood-color="#4F1B27" flood-opacity=".3"/>
+    </filter>
+    <path id="squircle" d="M300 100H724C858 100 924 166 924 300V724C924 858 858 924 724 924H300C166 924 100 858 100 724V300C100 166 166 100 300 100Z"/>
+    <path id="ramp" d="M290 586C397 586 444 541 547 476L515 443Q507 434 520 430L727 371Q740 367 736 380L677 587Q673 600 664 591L626 553C500 629 449 656 290 656Q276 656 276 642V600Q276 586 290 586Z"/>
+  </defs>
+  <use href="#squircle" fill="url(#tile)" filter="url(#shadow)"/>
+  <use href="#squircle" fill="none" stroke="url(#rim)" stroke-width="3"/>
+  <path d="M285 319H429Q467 319 467 357V663Q467 701 429 701H285Q247 701 247 663V357Q247 319 285 319Z M595 319H739Q777 319 777 357V663Q777 701 739 701H595Q557 701 557 663V357Q557 319 595 319Z" fill="url(#screen)" stroke="url(#frame)" stroke-width="16"/>
+  <path d="M285 330H429M595 330H739" fill="none" stroke="#FFE0BF" stroke-opacity=".3" stroke-width="3" stroke-linecap="round"/>
+  <g filter="url(#lift)">
+    <use href="#ramp" transform="translate(0 5)" fill="#D5A27E"/>
+    <use href="#ramp" fill="url(#ivory)"/>
+    <path d="M291 588C398 588 445 543 550 476M522 433L727 374" fill="none" stroke="#FFFFFF" stroke-opacity=".64" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

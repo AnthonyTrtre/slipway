@@ -1,0 +1,8 @@
+# Slipway, protocole v1 : mouvement
+# dx f32 | dy f32 | x f32 | y f32 | boutons enfoncés u8 (bit n = bouton n)
+# 25 octets
+# en-tête : type 0x40, drapeaux 0, longueur 17, séquence 42
+40 00 11 00 2a 00 00 00
+# charge
+00 00 e0 3f 00 00 80 be 00 20 4b 44 00 00 96 43
+01

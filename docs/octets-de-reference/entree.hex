@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : entree
+# x f32 | y f32 | modificateurs u32 (bit 1 = Maj gauche)
+# 20 octets
+# en-tête : type 0x10, drapeaux 0, longueur 12, séquence 5
+10 00 0c 00 05 00 00 00
+# charge
+00 00 00 3f 00 a0 d7 43 02 00 00 00

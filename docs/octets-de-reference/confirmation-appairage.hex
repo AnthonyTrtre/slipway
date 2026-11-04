@@ -1,0 +1,5 @@
+# Slipway, protocole v1 : confirmation-appairage
+# charge vide
+# 8 octets
+# en-tête : type 0x05, drapeaux 0, longueur 0, séquence 2
+05 00 00 00 02 00 00 00

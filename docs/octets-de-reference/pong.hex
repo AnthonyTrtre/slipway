@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : pong
+# horodatage u64 recopié du ping
+# 16 octets
+# en-tête : type 0x31, drapeaux 0, longueur 8, séquence 14
+31 00 08 00 0e 00 00 00
+# charge
+cb 04 fb 71 1f 01 00 00

@@ -1,0 +1,7 @@
+# Slipway, protocole v1 : sortie
+# raison u8 = 1 (panique)
+# 9 octets
+# en-tête : type 0x11, drapeaux 0, longueur 1, séquence 6
+11 00 01 00 06 00 00 00
+# charge
+01

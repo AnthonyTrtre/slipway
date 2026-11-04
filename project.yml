@@ -1,0 +1,84 @@
+name: Slipway
+options:
+  bundleIdPrefix: fr.anthony
+  deploymentTarget: { macOS: "26.0" }
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: JLT7CMPSRQ   # identité Apple Development stable (D004) : ne pas changer, sinon les autorisations TCC sautent
+packages:
+  Socle:
+    path: Socle                 # copie embarquée du socle de l atelier
+  SlipwayKit:
+    path: SlipwayKit            # toute la logique (testée par `swift test`, y compris sous Linux)
+  # Mises à jour intégrées (MIT), version épinglée : https://github.com/sparkle-project/Sparkle
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
+targets:
+  Slipway:
+    type: application
+    platform: macOS
+    sources: [Sources, Ressources]
+    info:
+      path: Info.plist
+      properties:
+        LSUIElement: true            # app de barre de menus, sans icône dans le Dock
+        NSHumanReadableCopyright: "© 2026 Utahpik · licence MIT"
+        CFBundleShortVersionString: $(MARKETING_VERSION)   # sinon XcodeGen fige « 1.0 »
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)   # croissant d'une version publiée à l'autre : Sparkle s'en sert
+        # Mises à jour : flux publié avec chaque Release GitHub, archives signées EdDSA (clé dans le Trousseau).
+        SUFeedURL: https://github.com/AnthonyTrtre/slipway/releases/latest/download/appcast.xml
+        SUPublicEDKey: YYCtfO+MA/QLJetStJExh29xbOZyqGKn45WmD6frP98=
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true    # téléchargées en arrière-plan, installées à la fermeture ou tout de suite au choix
+        SUScheduledCheckInterval: 21600
+        SUVerifyUpdateBeforeExtraction: true
+        # Réseau local (macOS 15+) : écoute TCP/UDP et Bonjour vers les autres Mac du réseau, rien d'autre.
+        NSLocalNetworkUsageDescription: "Slipway relie ce Mac à vos autres Mac du réseau local pour partager la souris, le clavier et le presse-papiers. Aucune connexion vers Internet."
+        NSBonjourServices: ["_slipway._tcp"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fr.anthony.slipway
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_APP_SANDBOX: NO       # CGEventTap actif et CGEventPost sont incompatibles avec le bac à sable (A06)
+    dependencies:
+      - package: Socle
+        product: SocleCore
+      - package: Socle
+        product: SocleBarreDeMenus
+      - package: SlipwayKit
+        product: SlipwayCoeur
+      - package: SlipwayKit
+        product: SlipwaySecurite
+      - package: SlipwayKit
+        product: SlipwayMoteur
+      - package: SlipwayKit
+        product: SlipwayMac
+      - package: Sparkle
+        product: Sparkle
+  SlipwayTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests]
+    dependencies:
+      - target: Slipway
+      - package: SlipwayKit
+        product: SlipwayCoeur
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: fr.anthony.slipway.tests
+schemes:
+  Slipway:
+    build:
+      targets:
+        Slipway: all
+        SlipwayTests: [test]
+    test:
+      targets: [SlipwayTests]
