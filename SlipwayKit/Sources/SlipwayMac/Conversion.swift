@@ -37,7 +37,7 @@ public enum ConversionEvenements {
         case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
             // Deltas en double : la partie fractionnaire compte (pavé tactile lent), contrairement aux champs entiers.
             let delta = Point(x: e.getDoubleValueField(.mouseEventDeltaX), y: e.getDoubleValueField(.mouseEventDeltaY))
-            return .mouvement(position: position, delta: delta)
+            return .mouvement(position: position, delta: delta, glisse: type != .mouseMoved)
         case .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp:
             let numero = UInt8(clamping: max(0, min(31, e.getIntegerValueField(.mouseEventButtonNumber))))
             let enfonce = type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown

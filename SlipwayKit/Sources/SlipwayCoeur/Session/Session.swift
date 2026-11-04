@@ -44,6 +44,10 @@ public struct Session: Sendable {
     private var boutonsDistants: Set<BoutonSouris> = []
     private var modificateurs: Modificateurs = []
     private var debutPressionBord: Double?
+    /// Dernier appui, répétition ou relâchement vu (sert à repérer une touche dont on a manqué le relâchement).
+    private var derniereTouche: Double = -.infinity
+    /// Sans nouvelle du clavier depuis ce délai, une touche encore notée enfoncée est oubliée (plus que la répétition la plus lente).
+    public var delaiToucheOubliee: Double = 3
 
     // Côté Mac piloté.
     public private(set) var injections = SuiviInjections()
@@ -235,12 +239,16 @@ public struct Session: Sendable {
 
     private mutating func traiterEnLocal(_ e: EvenementLocal, t: Double) -> Decision {
         switch e {
-        case .mouvement(let position, let delta):
+        case .mouvement(let position, let delta, let glisse):
             positionLocale = position
             // La vraie souris de ce Mac bouge alors qu'un pair le pilote (nos propres injections sont filtrées en
             // amont) : ce Mac reprend la main, sinon il resterait bloqué « piloté » sans plus pouvoir passer ses bords.
             var reprise: [Action] = []
             if case .piloteePar = mode, delta != .zero { reprise = toutRendreLocal(raison: .bascule) }
+            // Relâchement manqué (macOS a coupé la capture un instant, verrouillage, saisie sécurisée) : sans cela, les
+            // bords resteraient bloqués jusqu'au prochain appui sur ce bouton ou cette touche.
+            if !glisse, !boutonsLocaux.isEmpty { boutonsLocaux.removeAll(); reprise.append(.journal("Bouton resté enfoncé oublié (relâchement manqué)")) }
+            reprise += oublierTouchesPerimees(t: t)
             let resteIci = Decision(avaler: false, actions: reprise)
             guard mode == .local, principal, !aQuelqueChoseDEnfonce else { debutPressionBord = nil; return resteIci }
             guard case .bascule(let cible, let entree, let sortie) = dispositionActive.deplacer(depuis: position, de: delta, sur: moi) else {
@@ -256,6 +264,7 @@ public struct Session: Sendable {
             return .laisserPasser
         case .touche(let usage, let enfonce, let repetition, let mods):
             modificateurs = mods
+            derniereTouche = t
             if enfonce { routes[usage] = .local } else {
                 // Relâchement d'une touche enfoncée pendant un pilotage : il doit partir chez ce pair.
                 if case .pair(let pair) = routes.removeValue(forKey: usage) {
@@ -271,21 +280,19 @@ public struct Session: Sendable {
 
     private mutating func traiterEnPilotage(_ e: EvenementLocal, pair: IdPair, t: Double) -> Decision {
         switch e {
-        case .mouvement(_, let delta):
-            let facteur = dispositionActive.macs[pair]?.facteurVitesse ?? 1
-            let d = Point(x: delta.x * facteur, y: delta.y * facteur)
-            let resultat = dispositionActive.deplacer(depuis: positionDistante, de: d, sur: pair)
-            switch resultat {
-            case .bascule(let cible, let entree, let sortie) where !aQuelqueChoseDEnfonce:
-                guard bordAssezPousse(t: t) else { return envoyerMouvement(vers: sortie, delta: d, pair: pair) }
-                if cible == moi { return Decision(avaler: true, actions: retourLocal(entree: entree)) }
-                return Decision(avaler: true, actions: entrerChez(cible, a: entree, actionsAvant: [.envoyer(.sortie(.bascule), a: pair)]))
-            case .bascule(_, _, let sortie):
-                return envoyerMouvement(vers: sortie, delta: d, pair: pair)
-            case .reste(let p):
-                debutPressionBord = nil
-                return envoyerMouvement(vers: p, delta: d, pair: pair)
+        case .mouvement(_, let delta, let glisse):
+            var oublis = oublierTouchesPerimees(t: t)
+            if !glisse, !boutonsDistants.isEmpty {
+                // Relâchement manqué : envoyé au pair, qui sinon resterait en train de glisser.
+                for b in boutonsDistants.sorted(by: { $0.rawValue < $1.rawValue }) {
+                    oublis.append(.envoyer(.bouton(EvenementBouton(bouton: b, enfonce: false, nbClics: 1, x: Float(positionDistante.x), y: Float(positionDistante.y))), a: pair))
+                }
+                boutonsDistants.removeAll()
+                oublis.append(.journal("Bouton resté enfoncé oublié (relâchement manqué)"))
             }
+            var decision = deplacerEnPilotage(delta: delta, pair: pair, t: t)
+            decision.actions = oublis + decision.actions
+            return decision
         case .bouton(let b, let enfonce, let nbClics, _):
             if enfonce { boutonsDistants.insert(b) } else { boutonsDistants.remove(b) }
             let ev = EvenementBouton(bouton: b, enfonce: enfonce, nbClics: nbClics, x: Float(positionDistante.x), y: Float(positionDistante.y))
@@ -294,6 +301,7 @@ public struct Session: Sendable {
             return Decision(avaler: true, actions: [.envoyerTempsReel(.defilement(d), a: pair)])
         case .touche(let usage, let enfonce, let repetition, let mods):
             modificateurs = mods
+            derniereTouche = t
             let destination: Destination
             if enfonce {
                 destination = repetition ? (routes[usage] ?? .pair(pair)) : .pair(pair)
@@ -306,6 +314,39 @@ public struct Session: Sendable {
         case .toucheSysteme(let ts):
             return Decision(avaler: true, actions: [.envoyer(.toucheSysteme(ts), a: pair)])
         }
+    }
+
+    private mutating func deplacerEnPilotage(delta: Point, pair: IdPair, t: Double) -> Decision {
+        let facteur = dispositionActive.macs[pair]?.facteurVitesse ?? 1
+        let d = Point(x: delta.x * facteur, y: delta.y * facteur)
+        let resultat = dispositionActive.deplacer(depuis: positionDistante, de: d, sur: pair)
+        switch resultat {
+        case .bascule(let cible, let entree, let sortie) where !aQuelqueChoseDEnfonce:
+            guard bordAssezPousse(t: t) else { return envoyerMouvement(vers: sortie, delta: d, pair: pair) }
+            if cible == moi { return Decision(avaler: true, actions: retourLocal(entree: entree)) }
+            return Decision(avaler: true, actions: entrerChez(cible, a: entree, actionsAvant: [.envoyer(.sortie(.bascule), a: pair)]))
+        case .bascule(_, _, let sortie):
+            return envoyerMouvement(vers: sortie, delta: d, pair: pair)
+        case .reste(let p):
+            debutPressionBord = nil
+            return envoyerMouvement(vers: p, delta: d, pair: pair)
+        }
+    }
+
+    /// Touche ordinaire encore notée enfoncée alors que le clavier ne dit plus rien depuis `delaiToucheOubliee` :
+    /// son relâchement a été manqué. Elle est oubliée (relâchée chez le pair où elle était partie).
+    private mutating func oublierTouchesPerimees(t: Double) -> [Action] {
+        guard t - derniereTouche > delaiToucheOubliee else { return [] }
+        let perimees = routes.filter { !CodeTouche.estModificateur($0.key) }.sorted { $0.key < $1.key }
+        guard !perimees.isEmpty else { return [] }
+        var actions: [Action] = [.journal("Touche restée enfoncée oubliée (relâchement manqué)")]
+        for (usage, destination) in perimees {
+            routes[usage] = nil
+            if case .pair(let p) = destination {
+                actions.append(.envoyer(.touche(EvenementTouche(usage: usage, enfonce: false, repetition: false, modificateurs: modificateurs)), a: p))
+            }
+        }
+        return actions
     }
 
     private mutating func envoyerMouvement(vers p: Point, delta: Point, pair: IdPair) -> Decision {

@@ -10,8 +10,8 @@ extension Session {
     }
 
     /// Pousse le curseur local d'A au-delà du bord droit : A pilote B.
-    mutating func passerSurB(t: Double = 1) -> Decision {
-        traiter(.mouvement(position: Point(x: 1511, y: 400), delta: Point(x: 5, y: 0)), t: t)
+    mutating func passerSurB(t: Double = 1, glisse: Bool = false) -> Decision {
+        traiter(.mouvement(position: Point(x: 1511, y: 400), delta: Point(x: 5, y: 0), glisse: glisse), t: t)
     }
 }
 
@@ -101,7 +101,7 @@ struct SessionPilotageTests {
         let clic = s.traiter(.bouton(.gauche, enfonce: true, nbClics: 2, position: .zero), t: 1.1)
         guard case .bouton(let b)? = clic.actions.envois.first?.0 else { Issue.record("pas de clic"); return }
         #expect(b.nbClics == 2 && b.enfonce && Double(b.y) == 400)
-        let glisser = s.traiter(.mouvement(position: .zero, delta: Point(x: 10, y: 0)), t: 1.2)
+        let glisser = s.traiter(.mouvement(position: .zero, delta: Point(x: 10, y: 0), glisse: true), t: 1.2)
         guard case .mouvement(let m)? = glisser.actions.envois.first?.0 else { Issue.record("pas de mouvement"); return }
         #expect(m.boutons == 1)
         let def = Defilement(dxPoints: 0, dyPoints: 3, dxLignes: 0, dyLignes: 0, phase: .changement, inertie: .aucune, continu: true)
@@ -111,10 +111,44 @@ struct SessionPilotageTests {
     @Test func pasDeBasculeBoutonEnfonce() {
         var s = Session.deTest()
         _ = s.traiter(.bouton(.gauche, enfonce: true, nbClics: 1, position: Point(x: 1511, y: 400)), t: 0.5)
-        #expect(!s.passerSurB().avaler)
+        #expect(!s.passerSurB(glisse: true).avaler)
         #expect(s.mode == .local)
         _ = s.traiter(.bouton(.gauche, enfonce: false, nbClics: 1, position: Point(x: 1511, y: 400)), t: 0.6)
         #expect(s.passerSurB().avaler)
+    }
+
+    /// Relâchement jamais vu (macOS coupe la capture un instant, verrouillage) : un simple mouvement prouve qu'aucun
+    /// bouton n'est enfoncé, les bords ne restent pas bloqués.
+    @Test func boutonDontLeRelachementAEteManqueNeBloquePasLesBords() {
+        var s = Session.deTest()
+        _ = s.traiter(.bouton(.gauche, enfonce: true, nbClics: 1, position: Point(x: 1511, y: 400)), t: 0.5)
+        let d = s.passerSurB()
+        #expect(d.avaler)
+        #expect(s.mode == .pilote(Bureaux.b))
+    }
+
+    @Test func toucheDontLeRelachementAEteManqueOublieeApresTroisSecondes() {
+        var s = Session.deTest()
+        _ = s.traiter(.touche(usage: CodeTouche.tab, enfonce: true, repetition: false, modificateurs: []), t: 0.5)
+        #expect(!s.passerSurB(t: 2).avaler)
+        #expect(s.passerSurB(t: 3.6).avaler)
+        #expect(s.mode == .pilote(Bureaux.b))
+    }
+
+    @Test func toucheTenueQuiSeRepeteBloqueToujoursLesBords() {
+        var s = Session.deTest()
+        _ = s.traiter(.touche(usage: CodeTouche.tab, enfonce: true, repetition: false, modificateurs: []), t: 0.5)
+        _ = s.traiter(.touche(usage: CodeTouche.tab, enfonce: true, repetition: true, modificateurs: []), t: 3.4)
+        #expect(!s.passerSurB(t: 3.6).avaler)
+    }
+
+    @Test func boutonManqueEnPilotageRelacheChezLePair() {
+        var s = Session.deTest()
+        _ = s.passerSurB()
+        _ = s.traiter(.bouton(.gauche, enfonce: true, nbClics: 1, position: .zero), t: 1.1)
+        let d = s.traiter(.mouvement(position: .zero, delta: Point(x: 1, y: 0)), t: 1.2)
+        let relache = d.actions.envois.contains { if case .bouton(let b) = $0.0 { !b.enfonce } else { false } }
+        #expect(relache)
     }
 
     @Test func pasDeBasculeToucheOrdinaireEnfonceeMaisOuiAvecModificateur() {

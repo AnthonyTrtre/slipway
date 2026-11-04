@@ -11,7 +11,7 @@ struct ConversionTests {
         let e = try #require(CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: CGPoint(x: 100.5, y: 200.25), mouseButton: .left))
         e.setDoubleValueField(.mouseEventDeltaX, value: 3)
         e.setDoubleValueField(.mouseEventDeltaY, value: -2)
-        guard case .mouvement(let p, let d)? = ConversionEvenements.versEvenementLocal(e, type: .mouseMoved) else { Issue.record("pas un mouvement"); return }
+        guard case .mouvement(let p, let d, let glisse)? = ConversionEvenements.versEvenementLocal(e, type: .mouseMoved), !glisse else { Issue.record("pas un mouvement"); return }
         #expect(p == Point(x: 100.5, y: 200.25))
         #expect(d == Point(x: 3, y: -2))
         // Un CGEvent synthétique ne garde pas forcément la fraction d'un delta : on la lit si macOS la fournit
@@ -62,7 +62,7 @@ struct ConversionTests {
             #expect(ConversionEvenements.estInjecteParSlipway(e))
             let local = ConversionEvenements.versEvenementLocal(e, type: e.type)
             switch (i, local) {
-            case (.mouvement(let p, let d, _), .mouvement(let p2, let d2)?): #expect(p == p2 && d == d2)
+            case (.mouvement(let p, let d, let b), .mouvement(let p2, let d2, let glisse)?): #expect(p == p2 && d == d2 && glisse == !b.isEmpty)
             case (.bouton(let b, let enf, let n, let p), .bouton(let b2, let enf2, let n2, let p2)?): #expect(b == b2 && enf == enf2 && n == n2 && p == p2)
             case (.touche(let u, let enf, _, let m), .touche(let u2, let enf2, _, let m2)?): #expect(u == u2 && enf == enf2 && m == m2)
             default: Issue.record("\(i) → \(String(describing: local))")

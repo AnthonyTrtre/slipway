@@ -3,8 +3,9 @@
 
 /// Événement capturé sur ce Mac (souris et clavier physiques).
 public enum EvenementLocal: Equatable, Sendable {
-    /// `position` = position du curseur local (bloquée pendant le pilotage), `delta` = déplacement brut en points.
-    case mouvement(position: Point, delta: Point)
+    /// `position` = position du curseur local (bloquée pendant le pilotage), `delta` = déplacement brut en points,
+    /// `glisse` = un bouton est physiquement enfoncé (glisser) : faux, aucun bouton ne l'est.
+    case mouvement(position: Point, delta: Point, glisse: Bool = false)
     case bouton(BoutonSouris, enfonce: Bool, nbClics: UInt8, position: Point)
     case defilement(Defilement)
     case touche(usage: UInt16, enfonce: Bool, repetition: Bool, modificateurs: Modificateurs)
