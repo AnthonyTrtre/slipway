@@ -32,7 +32,14 @@ mv "$MAJ/Slipway-$VERSION.zip" "$MAJ/appcast.xml" "$SORTIE/"; rm -rf "$MAJ"
 PREPA="$SORTIE/dmg"; mkdir -p "$PREPA"
 ditto "$APP" "$PREPA/Slipway.app"
 ln -s /Applications "$PREPA/Applications"
-hdiutil create -quiet -volname "Slipway $VERSION" -srcfolder "$PREPA" -fs HFS+ -format UDZO "$SORTIE/Slipway-$VERSION.dmg"
+# hdiutil produit parfois une image corrompue (constaté sous macOS 26.6) : vérifiée, refaite au besoin.
+for essai in 1 2 3 4 5; do
+  rm -f "$SORTIE/Slipway-$VERSION.dmg"
+  hdiutil create -quiet -volname "Slipway $VERSION" -srcfolder "$PREPA" -fs HFS+ -format UDZO "$SORTIE/Slipway-$VERSION.dmg"
+  hdiutil verify -quiet "$SORTIE/Slipway-$VERSION.dmg" 2>/dev/null && break
+  echo "DMG corrompu (essai $essai), nouvel essai"
+  (( essai == 5 )) && { echo "DMG toujours corrompu"; exit 1; }
+done
 rm -rf "$PREPA" "$DD"
 ( cd "$SORTIE" && shasum -a 256 "Slipway-$VERSION.dmg" "Slipway-$VERSION.zip" | tee SHA256SUMS.txt )
 echo "Prêt : $SORTIE (DMG, zip Sparkle, appcast.xml, SHA256SUMS.txt)"
