@@ -106,9 +106,13 @@ public final class InjecteurMac: InjecteurEntrees, @unchecked Sendable {
 /// une app de barre de menus en arrière-plan : le curseur suivait alors la souris sur ce Mac. Chaque mouvement parti
 /// vers l'autre Mac ramène donc le curseur local à son point de sortie (`maintenir`). Le mouvement envoyé vient des
 /// deltas de l'événement, il n'est pas touché.
+///
+/// Masquage : macOS ne cache le curseur que pour l'app active. Slipway passe donc au premier plan le temps du pilotage
+/// (le clavier part de toute façon vers l'autre Mac) et rend la main à l'app d'avant au retour. Aucune API privée.
 public final class CurseurMac: CurseurLocal, @unchecked Sendable {
     private let masque = Mutex(false)
     private let gele = Mutex<CGPoint?>(nil)
+    private let appPrecedente = Mutex<NSRunningApplication?>(nil)
 
     public init() {}
 
@@ -116,7 +120,20 @@ public final class CurseurMac: CurseurLocal, @unchecked Sendable {
         gele.withLock { $0 = CGEvent(source: nil)?.location }
         CGAssociateMouseAndMouseCursorPosition(0)
         let doitMasquer = masque.withLock { m -> Bool in defer { m = true }; return !m }
-        if doitMasquer { CGDisplayHideCursor(CGMainDisplayID()) }
+        guard doitMasquer else { return }
+        DispatchQueue.main.async { [self] in
+            let devant = NSWorkspace.shared.frontmostApplication
+            if devant?.processIdentifier != ProcessInfo.processInfo.processIdentifier { appPrecedente.withLock { $0 = devant } }
+            NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.async { CGDisplayHideCursor(CGMainDisplayID()) }   // une fois l'activation prise en compte
+        }
+    }
+
+    private func afficher() {
+        DispatchQueue.main.async { [self] in
+            CGDisplayShowCursor(CGMainDisplayID())
+            appPrecedente.withLock { a in a?.activate(); a = nil }
+        }
     }
 
     /// Pendant le pilotage d'un autre Mac : remet le curseur local à son point de sortie s'il a bougé.
@@ -131,7 +148,7 @@ public final class CurseurMac: CurseurLocal, @unchecked Sendable {
         CGWarpMouseCursorPosition(CGPoint(x: point.x, y: point.y))
         CGAssociateMouseAndMouseCursorPosition(1)
         let doitAfficher = masque.withLock { m -> Bool in defer { m = false }; return m }
-        if doitAfficher { CGDisplayShowCursor(CGMainDisplayID()) }
+        if doitAfficher { afficher() }
     }
 
     /// Filet de sécurité (arrêt de l'app) : jamais de curseur invisible ou bloqué.
@@ -139,7 +156,7 @@ public final class CurseurMac: CurseurLocal, @unchecked Sendable {
         gele.withLock { $0 = nil }
         CGAssociateMouseAndMouseCursorPosition(1)
         let doitAfficher = masque.withLock { m -> Bool in defer { m = false }; return m }
-        if doitAfficher { CGDisplayShowCursor(CGMainDisplayID()) }
+        if doitAfficher { CGDisplayShowCursor(CGMainDisplayID()) }   // arrêt de l'app : tout de suite, sans file
     }
 }
 
