@@ -44,8 +44,9 @@ public protocol CurseurLocal: Sendable {
 /// `Moteur.compteurPressePapiers(_:lire:)` avec le compteur de changements courant.
 public protocol PressePapiersLocal: Sendable {
     func signalerChangementPossible()
-    /// Écrit le texte et rend le nouveau compteur de changements.
-    func ecrire(texte: String) -> Int
+    /// Écrit le contenu (au besoin hors du fil appelant : des fichiers à poser sur le disque) puis rappelle `fini`
+    /// avec le nouveau compteur de changements, ou nil en cas d'échec.
+    func ecrire(_ contenu: ContenuPressePapiers, fini: @escaping @Sendable (Int?) -> Void)
 }
 
 /// Pairs appairés : on mémorise leur clé publique d'identité (épinglage).
@@ -76,6 +77,6 @@ public struct SansEffet: InjecteurEntrees, CurseurLocal, PressePapiersLocal, Obs
     public func figer() {}
     public func liberer(a point: Point) {}
     public func signalerChangementPossible() {}
-    public func ecrire(texte: String) -> Int { 0 }
+    public func ecrire(_ contenu: ContenuPressePapiers, fini: @escaping @Sendable (Int?) -> Void) { fini(0) }
     public func moteurAChange() {}
 }

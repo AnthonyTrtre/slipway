@@ -23,7 +23,9 @@ public struct Capacites: OptionSet, Sendable, Hashable {
     public static let pointeur = Capacites(rawValue: 1 << 0)
     public static let clavier = Capacites(rawValue: 1 << 1)
     public static let pressePapiersTexte = Capacites(rawValue: 1 << 2)
-    public static let toutes: Capacites = [.pointeur, .clavier, .pressePapiersTexte]
+    /// Images (PNG) et fichiers (lot `LotFichiers`) dans le presse-papiers : jamais envoyés à un pair qui ne l'annonce pas.
+    public static let pressePapiersFichiers = Capacites(rawValue: 1 << 3)
+    public static let toutes: Capacites = [.pointeur, .clavier, .pressePapiersTexte, .pressePapiersFichiers]
 }
 
 public enum TypeMessage: UInt8, Sendable, CaseIterable {
@@ -194,6 +196,9 @@ public struct ToucheSysteme: Equatable, Sendable {
 
 public enum FormatPressePapiers: UInt8, Sendable {
     case texteUTF8 = 1
+    case imagePNG = 2
+    /// Fichiers, dossiers et apps copiés dans le Finder (`LotFichiers`).
+    case fichiers = 3
 }
 
 public struct OffrePressePapiers: Equatable, Sendable {

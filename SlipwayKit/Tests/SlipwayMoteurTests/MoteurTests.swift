@@ -434,17 +434,49 @@ struct PressePapiersMoteurTests {
     @Test func copierIciCollerLaSansEcho() {
         var banc = Banc()
         banc.connecter()
-        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.texte }   // référence
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }   // référence
         banc.a.pressePapiers.copier("Bonjour depuis A ✌️")
-        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.texte }
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }
         banc.reseau.pomper()
         #expect(banc.b.pressePapiers.texte == "Bonjour depuis A ✌️")
         // B voit son presse-papiers changer (c'est nous qui l'avons écrit) : il ne doit rien renvoyer.
         let avant = banc.lienB.enregistrements.withLock { $0.count }
-        banc.b.moteur.compteurPressePapiers(0) { "" }
-        banc.b.moteur.compteurPressePapiers(banc.b.pressePapiers.compteur) { banc.b.pressePapiers.texte }
+        banc.b.moteur.compteurPressePapiers(0) { .texte("") }
+        banc.b.moteur.compteurPressePapiers(banc.b.pressePapiers.compteur) { banc.b.pressePapiers.contenu }
         banc.reseau.pomper()
         #expect(banc.lienB.enregistrements.withLock { $0.count } == avant)
+    }
+
+    @Test func fichiersEnvoyesParMorceauxSansBloquerLeClavier() throws {
+        var banc = Banc()
+        banc.connecter()
+        let gros = [UInt8](repeating: 7, count: 3 * 1024 * 1024)   // 3 Mo : 6 tics de 512 ko
+        let lot = LotFichiers(elements: [.init(chemin: "Photos", nature: .dossier, mode: 0o755),
+                                         .init(chemin: "Photos/plage.heic", nature: .fichier, contenu: gros)])
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }   // référence
+        banc.a.pressePapiers.copier(contenu: .fichiers(lot))
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }
+        banc.reseau.pomper()
+        #expect(banc.b.pressePapiers.texte == "")   // pas encore tout reçu
+        let premierLot = banc.lienA.enregistrements.withLock { $0.count }
+        #expect(premierLot < 30)   // offre + 16 morceaux de 32 ko, pas les 96
+        for _ in 0..<10 { banc.tic() }
+        #expect(banc.b.pressePapiers.contenu == .fichiers(lot))
+    }
+
+    @Test func imagePasEnvoyeeAUnPairQuiNeConnaitQueLeTexte() throws {
+        var banc = Banc(capacitesB: [.pointeur, .clavier, .pressePapiersTexte])
+        banc.connecter()
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }
+        banc.a.pressePapiers.copier(contenu: .imagePNG([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]))
+        let avant = banc.lienA.enregistrements.withLock { $0.count }
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }
+        #expect(banc.lienA.enregistrements.withLock { $0.count } == avant)
+        // Le texte, lui, passe toujours.
+        banc.a.pressePapiers.copier("du texte")
+        banc.a.moteur.compteurPressePapiers(banc.a.pressePapiers.compteur) { banc.a.pressePapiers.contenu }
+        banc.reseau.pomper()
+        #expect(banc.b.pressePapiers.texte == "du texte")
     }
 
     @Test func basculeDeclencheUneVerification() {

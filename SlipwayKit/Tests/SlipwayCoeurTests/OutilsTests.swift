@@ -68,6 +68,14 @@ struct OutilsTests {
     }
 }
 
+/// Offre et tous ses morceaux, d'un coup.
+func toutEnvoyer(_ s: inout SynchroPressePapiers, _ c: ContenuPressePapiers) -> [Message] {
+    guard var envoi = s.preparerEnvoi(c) else { return [] }
+    var messages: [Message] = [.pressePapiersOffre(envoi.offre)]
+    while !envoi.fini { messages += envoi.morceaux(budget: 0) }
+    return messages
+}
+
 @Suite("Presse-papiers")
 struct PressePapiersTests {
     @Test func premiereObservationNEnvoiePas() {
@@ -86,8 +94,8 @@ struct PressePapiersTests {
         let aRelire = s.compteurLocal(2)
         #expect(!aRelire)
         // Même si on relit ce texte, il n'est pas renvoyé.
-        let renvoi = s.preparerEnvoi(texte: "depuis B")
-        #expect(renvoi.isEmpty)
+        let renvoi = s.preparerEnvoi(.texte("depuis B"))
+        #expect(renvoi == nil)
         let doublon = s.texteRecu(empreinte: Empreinte.fnv1a(recu))
         #expect(!doublon)   // doublon reçu ignoré
     }
@@ -95,31 +103,32 @@ struct PressePapiersTests {
     @Test func envoiDecoupeEtReassemble() {
         var s = SynchroPressePapiers()
         let texte = String(repeating: "Bonjour é ", count: 10_000)   // 110 000 octets → 4 morceaux
-        let messages = s.preparerEnvoi(texte: texte)
+        let messages = toutEnvoyer(&s, .texte(texte))
         #expect(messages.count == 1 + 4)
-        let deuxieme = s.preparerEnvoi(texte: texte)
-        #expect(deuxieme.isEmpty)   // déjà envoyé
+        let deuxieme = s.preparerEnvoi(.texte(texte))
+        #expect(deuxieme == nil)   // déjà envoyé
         var a = AssembleurPressePapiers()
         var resultat = AssembleurPressePapiers.Resultat.enCours
         for m in messages {
             #expect(resultat == .enCours)
             resultat = a.recevoir(m)
         }
-        #expect(resultat == .termine(texte: texte, empreinte: Empreinte.fnv1a(Array(texte.utf8))))
+        #expect(resultat == .termine(.texte(texte), empreinte: Empreinte.fnv1a(Array(texte.utf8))))
         // Chaque morceau tient dans une trame.
         for m in messages { #expect(Codec.encoder(m).count <= Protocole.tailleMaxTrame - 16) }
     }
 
     @Test func videOuTropGrosIgnore() {
-        var s = SynchroPressePapiers(tailleMax: 10)
-        let tailles = ["", String(repeating: "x", count: 11), "court"].map { s.preparerEnvoi(texte: $0).count }
+        var s = SynchroPressePapiers()
+        let trop = String(repeating: "x", count: FormatPressePapiers.texteUTF8.tailleMax + 1)
+        let tailles = ["", trop, "court"].map { toutEnvoyer(&s, .texte($0)).count }
         #expect(tailles == [0, 0, 2])
     }
 
     @Test func assembleurRefuseLesIncoherences() {
-        var a = AssembleurPressePapiers(tailleMax: 100)
+        var a = AssembleurPressePapiers()
         #expect(a.recevoir(.pressePapiersMorceau(MorceauPressePapiers(idTransfert: 1, decalage: 0, octets: [1]))) == .rejete("morceau orphelin"))
-        #expect(a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 1, format: .texteUTF8, taille: 1000, empreinte: 0))) == .rejete("trop gros (1000 octets)"))
+        #expect(a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 1, format: .texteUTF8, taille: 5_000_000, empreinte: 0))) == .rejete("trop gros (5000000 octets)"))
         _ = a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 2, format: .texteUTF8, taille: 2, empreinte: 0)))
         #expect(a.recevoir(.pressePapiersMorceau(MorceauPressePapiers(idTransfert: 2, decalage: 1, octets: [1]))) == .rejete("morceau incohérent"))
         _ = a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 3, format: .texteUTF8, taille: 2, empreinte: 0)))
@@ -127,6 +136,47 @@ struct PressePapiersTests {
         let invalide: [UInt8] = [0xC3, 0x28]
         _ = a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 4, format: .texteUTF8, taille: 2, empreinte: Empreinte.fnv1a(invalide))))
         #expect(a.recevoir(.pressePapiersMorceau(MorceauPressePapiers(idTransfert: 4, decalage: 0, octets: invalide))) == .rejete("UTF-8 invalide"))
+        let pasPNG: [UInt8] = [0xFF, 0xD8, 0xFF]
+        _ = a.recevoir(.pressePapiersOffre(OffrePressePapiers(idTransfert: 5, format: .imagePNG, taille: 3, empreinte: Empreinte.fnv1a(pasPNG))))
+        #expect(a.recevoir(.pressePapiersMorceau(MorceauPressePapiers(idTransfert: 5, decalage: 0, octets: pasPNG))) == .rejete("image qui n'est pas un PNG"))
+    }
+
+    @Test func imageEtFichiersAllerRetour() {
+        let app = LotFichiers(elements: [
+            .init(chemin: "Outil.app", nature: .dossier, mode: 0o755),
+            .init(chemin: "Outil.app/Contents", nature: .dossier, mode: 0o755),
+            .init(chemin: "Outil.app/Contents/MacOS", nature: .dossier, mode: 0o755),
+            .init(chemin: "Outil.app/Contents/MacOS/Outil", nature: .fichier, mode: 0o4755, contenu: Array(repeating: 0xCF, count: 70_000)),
+            .init(chemin: "Outil.app/Contents/Actuel", nature: .lien, contenu: Array("MacOS".utf8)),
+            .init(chemin: "note.txt", nature: .fichier, contenu: Array("salut".utf8)),
+        ])
+        #expect(app.racines == ["Outil.app", "note.txt"])
+        #expect(app.elements[3].mode == 0o755)   // setuid retiré
+        for contenu in [ContenuPressePapiers.imagePNG([0x89, 0x50, 0x4E, 0x47] + Array(repeating: 1, count: 40_000)), .fichiers(app)] {
+            var s = SynchroPressePapiers()
+            var a = AssembleurPressePapiers()
+            var resultat = AssembleurPressePapiers.Resultat.enCours
+            for m in toutEnvoyer(&s, contenu) { resultat = a.recevoir(m) }
+            #expect(resultat == .termine(contenu, empreinte: Empreinte.fnv1a(contenu.octets)))
+        }
+    }
+
+    @Test(arguments: ["/etc/passwd", "../dehors", "a/../../b", "a//b", "./a", ""])
+    func lotQuiSortDuDossierRefuse(_ chemin: String) {
+        let lot = LotFichiers(elements: [.init(chemin: "a", nature: .dossier), .init(chemin: chemin, nature: .fichier, contenu: [1])])
+        #expect(throws: LotFichiers.Erreur.self) { try LotFichiers.decoder(lot.encoder()) }
+    }
+
+    @Test func lotQuiEcritATraversUnLienRefuse() {
+        // « a » est un lien vers /tmp : écrire « a/x » écrirait hors du dossier de réception.
+        let lot = LotFichiers(elements: [.init(chemin: "a", nature: .lien, contenu: Array("/tmp".utf8)),
+                                         .init(chemin: "a/x", nature: .fichier, contenu: [1])])
+        #expect(throws: LotFichiers.Erreur.self) { try LotFichiers.decoder(lot.encoder()) }
+        let doublon = LotFichiers(elements: [.init(chemin: "a", nature: .fichier), .init(chemin: "a", nature: .fichier)])
+        #expect(throws: LotFichiers.Erreur.self) { try LotFichiers.decoder(doublon.encoder()) }
+        var tronque = LotFichiers(elements: [.init(chemin: "a", nature: .fichier, contenu: [1, 2, 3])]).encoder()
+        tronque.removeLast()
+        #expect(throws: LotFichiers.Erreur.self) { try LotFichiers.decoder(tronque) }
     }
 }
 

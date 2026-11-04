@@ -80,6 +80,7 @@ public final class Moteur: Sendable {
         var latence = StatistiquesLatence()
         var pertes = CompteurPertes()
         var assembleur = AssembleurPressePapiers()
+        var envoi: EnvoiPressePapiers?
         var fusion = FusionMouvements()
         var dernierMouvement: Double = -1
         var idPair: IdPair? { materiel?.idPair }
@@ -103,7 +104,7 @@ public final class Moteur: Sendable {
         case figer
         case liberer(Point)
         case verifierPressePapiers
-        case ecrirePressePapiers(String)
+        case ecrirePressePapiers(ContenuPressePapiers)
         case notifier
     }
 
@@ -128,6 +129,8 @@ public final class Moteur: Sendable {
     /// Au plus un mouvement par datagramme toutes les 4 ms (250 par seconde) : une souris à 1000 Hz saturait le Wi-Fi
     /// de petits paquets, d'où des à-coups. Les mouvements intermédiaires sont fusionnés (positions absolues, rien ne se perd).
     public static let intervalleMouvement = 0.004
+    /// Presse-papiers envoyé au plus par 512 ko toutes les 50 ms (10 Mo/s) : un gros fichier ne retient pas le clavier.
+    public static let budgetPressePapiers = 512 * 1024
 
     public init(config: ConfigurationMoteur, horloge: Horloge = HorlogeSysteme(), injecteur: InjecteurEntrees, curseur: CurseurLocal,
                 pressePapiers: PressePapiersLocal, magasin: MagasinPairs, observateur: ObservateurMoteur, alea: SourceAlea = AleaSysteme()) {
@@ -362,7 +365,10 @@ public final class Moteur: Sendable {
                     envoyerTempsReel(.ping(horodatage: h), connexion: id, dans: &s, t: t)
                 }
             }
-            for id in s.connexions.keys.sorted() { viderFusion(id, dans: &s, t: t) }
+            for id in s.connexions.keys.sorted() {
+                viderFusion(id, dans: &s, t: t)
+                if s.connexions[id]?.phase == .etablie { envoyerMorceaux(id, dans: &s) }
+            }
             // Connexions jamais authentifiées (10 s) ou appairage laissé en plan (2 min) : fermées.
             for c in s.connexions.values.sorted(by: { $0.id < $1.id }) where c.phase != .etablie {
                 let limite = c.phase == .poigneeDeMain ? Self.delaiPoigneeDeMain : Self.dureeAppairage
@@ -375,19 +381,30 @@ public final class Moteur: Sendable {
         observateur.moteurAChange()
     }
 
-    /// Rappel de l'adaptateur presse-papiers : compteur courant, et lecture paresseuse du texte.
-    public func compteurPressePapiers(_ compteur: Int, lire: () -> String?) {
+    /// Rappel de l'adaptateur presse-papiers : compteur courant, et lecture paresseuse du contenu (hors verrou).
+    public func compteurPressePapiers(_ compteur: Int, lire: () -> ContenuPressePapiers?) {
         let doitLire = etat.withLock { $0.pressePapiers.compteurLocal(compteur) }
-        guard doitLire, let texte = lire() else { return }
+        guard doitLire, let contenu = lire() else { return }
+        let capacite: Capacites = contenu.format == .texteUTF8 ? .pressePapiersTexte : .pressePapiersFichiers
         commande { s, _ in
-            let messages = s.pressePapiers.preparerEnvoi(texte: texte)
-            guard !messages.isEmpty else { return [] }
-            for (id, c) in s.connexions.sorted(by: { $0.key < $1.key })
-            where c.phase == .etablie && c.materiel?.capacites.contains(.pressePapiersTexte) == true {
-                for m in messages { envoyerFiable(m, connexion: id, dans: &s) }
+            let cibles = s.connexions.keys.sorted().filter {
+                s.connexions[$0]?.phase == .etablie && s.connexions[$0]?.materiel?.capacites.contains(capacite) == true
             }
-            return [.journal("Presse-papiers envoyé (\(texte.utf8.count) octets)")]
+            guard !cibles.isEmpty, let envoi = s.pressePapiers.preparerEnvoi(contenu) else { return [] }
+            for id in cibles {
+                // Un nouveau contenu remplace l'envoi en cours : l'offre suivante remet le récepteur à zéro.
+                s.connexions[id]?.envoi = envoi
+                envoyerFiable(.pressePapiersOffre(envoi.offre), connexion: id, dans: &s)
+                envoyerMorceaux(id, dans: &s)
+            }
+            return [.journal("Presse-papiers envoyé : \(contenu.resume)")]
         }
+    }
+
+    private func envoyerMorceaux(_ id: IdConnexion, dans s: inout Etat) {
+        guard var envoi = s.connexions[id]?.envoi else { return }
+        for m in envoi.morceaux(budget: Self.budgetPressePapiers) { envoyerFiable(m, connexion: id, dans: &s) }
+        s.connexions[id]?.envoi = envoi.fini ? nil : envoi
     }
 
     /// Liens établis, par pair (le service réseau y apprend l'adresse qui marche).
@@ -444,9 +461,16 @@ public final class Moteur: Sendable {
             case .figer: curseur.figer()
             case .liberer(let p): curseur.liberer(a: p)
             case .verifierPressePapiers: pressePapiers.signalerChangementPossible()
-            case .ecrirePressePapiers(let texte):
-                let compteur = pressePapiers.ecrire(texte: texte)
-                etat.withLock { $0.pressePapiers.ecritParNous(compteur: compteur) }
+            case .ecrirePressePapiers(let contenu):
+                let t = horloge.maintenant()
+                let resume = contenu.resume
+                pressePapiers.ecrire(contenu) { [self] compteur in
+                    etat.withLock { s in
+                        if let compteur { s.pressePapiers.ecritParNous(compteur: compteur) }
+                        else { s.journal.ajouter(horodater("Presse-papiers reçu mais impossible à écrire : \(resume)", t: t)) }
+                    }
+                    observateur.moteurAChange()
+                }
             case .notifier: notifier = true
             }
         }
@@ -469,7 +493,7 @@ public final class Moteur: Sendable {
             case .libererCurseurLocal(let p): effets.append(.liberer(p))
             case .injecter(let i): effets.append(.injecter(i))
             case .verifierPressePapiers: effets.append(.verifierPressePapiers)
-            case .ecrirePressePapiers(let texte): effets.append(.ecrirePressePapiers(texte))
+            case .ecrirePressePapiers(let contenu): effets.append(.ecrirePressePapiers(contenu))
             case .couperLien(let pair):
                 for id in s.connexions.values.filter({ $0.idPair == pair }).map(\.id) {
                     s.connexions[id]?.lien.fermer()
@@ -576,9 +600,9 @@ public final class Moteur: Sendable {
             switch resultat {
             case .enCours: break
             case .rejete(let pourquoi): return [.journal("Presse-papiers ignoré : \(pourquoi)")]
-            case .termine(let texte, let empreinte):
+            case .termine(let contenu, let empreinte):
                 guard s.pressePapiers.texteRecu(empreinte: empreinte) else { return [] }
-                return [.ecrirePressePapiers(texte), .journal("Presse-papiers reçu (\(texte.utf8.count) octets)")]
+                return [.ecrirePressePapiers(contenu), .journal("Presse-papiers reçu : \(contenu.resume)")]
             }
         case .ecrans(let liste):
             guard c.phase == .etablie, let pair = c.idPair else { return [] }

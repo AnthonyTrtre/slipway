@@ -102,7 +102,7 @@ Seuls `Ping`, `Pong`, `Mouvement` et `Defilement` sont admis sur ce canal ; les 
 | 0x13 | Touche | fiable | usage u16 · enfoncé bool · répétition bool · modificateurs u32 |
 | 0x14 | ToucheSysteme | fiable | usage consommateur u16 · enfoncé bool · répétition bool |
 | 0x15 | ToutRelacher | fiable | vide |
-| 0x20 | PressePapiersOffre | fiable | id de transfert u32 · format u8 (1 = texte UTF-8) · taille u32 · empreinte FNV-1a 64 u64 |
+| 0x20 | PressePapiersOffre | fiable | id de transfert u32 · format u8 (1 = texte UTF-8 ≤ 4 Mio, 2 = image PNG ≤ 64 Mio, 3 = fichiers `LotFichiers` ≤ 256 Mio) · taille u32 · empreinte FNV-1a 64 u64 |
 | 0x21 | PressePapiersMorceau | fiable | id de transfert u32 · décalage u32 · octets (reste de la charge, ≤ 32 Kio) |
 | 0x30 | Ping | les deux | horodatage u64 (nanosecondes, horloge monotone de l'émetteur) |
 | 0x31 | Pong | les deux | horodatage u64 recopié du Ping |
@@ -114,7 +114,12 @@ puis l'hexadécimal).
 
 ### 4.1 Valeurs
 
-- **Capacités** (champ de bits) : bit 0 pointeur, bit 1 clavier, bit 2 presse-papiers texte. On utilise l'intersection.
+- **Capacités** (champ de bits) : bit 0 pointeur, bit 1 clavier, bit 2 presse-papiers texte, bit 3 presse-papiers images et fichiers (formats 2 et 3, jamais envoyés à un pair sans ce bit). On utilise l'intersection.
+- **Lot de fichiers** (format 3) : « SLPF » · version u8 (1) · nombre u32 (≤ 100 000) · pour chaque élément : nature u8
+  (0 dossier, 1 fichier, 2 lien symbolique) · chemin u16 + UTF-8 · mode u16 (≤ 0o777) · longueur u64 · contenu (octets du
+  fichier, cible du lien). Refusé si un chemin est absolu, contient `.`, `..` ou un composant vide, se répète, ou si son
+  parent n'est pas un dossier déclaré plus tôt (on n'écrit jamais à travers un lien). Les morceaux partent par 512 Kio
+  toutes les 50 ms pour ne pas retarder le clavier ; un nouveau contenu remplace l'envoi en cours.
 - **Raisons d'AuRevoir** : 0 normal, 1 version incompatible, 2 appairage refusé, 3 authentification échouée, 4 occupé
   (connexion en double), 5 erreur de protocole.
 - **Raisons de Sortie** : 0 bascule, 1 panique (« tout rendre en local »), 2 veille ou verrouillage, 3 arrêt de l'app, 4 délai.

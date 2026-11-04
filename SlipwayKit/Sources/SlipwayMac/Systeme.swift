@@ -134,42 +134,6 @@ public final class MagasinPairsMac: MagasinPairs, @unchecked Sendable {
     }
 }
 
-/// Presse-papiers texte. On ne lit le contenu que si `changeCount` a bougé, et seulement après une copie ou une bascule.
-public final class PressePapiersMac: PressePapiersLocal, @unchecked Sendable {
-    private let rappel = Mutex<(@Sendable (Int, () -> String?) -> Void)?>(nil)
-
-    public init() {}
-
-    /// À relier au moteur une fois celui-ci créé : `{ moteur.compteurPressePapiers($0, lire: $1) }`.
-    public func relier(_ r: @escaping @Sendable (Int, () -> String?) -> Void) { rappel.withLock { $0 = r } }
-
-    public func signalerChangementPossible() {
-        // L'application qui copie écrit le presse-papiers un peu après le ⌘C : deux vérifications espacées.
-        for delai in [0.15, 0.6] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delai) { [weak self] in
-                guard let r = self?.rappel.withLock({ $0 }) else { return }
-                let pb = NSPasteboard.general
-                r(pb.changeCount) {
-                    // Mots de passe copiés depuis un gestionnaire (types marqués « masqué » ou « éphémère ») : jamais envoyés.
-                    let types = Set(pb.types ?? [])
-                    let prives: Set<NSPasteboard.PasteboardType> = [.init("org.nspasteboard.ConcealedType"), .init("org.nspasteboard.TransientType")]
-                    return types.isDisjoint(with: prives) ? pb.string(forType: .string) : nil
-                }
-            }
-        }
-    }
-
-    public func ecrire(texte: String) -> Int {
-        let ecrire: () -> Int = {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(texte, forType: .string)
-            return pb.changeCount
-        }
-        return Thread.isMainThread ? ecrire() : DispatchQueue.main.sync(execute: ecrire)
-    }
-}
-
 /// Autorisations TCC (Accessibilité pour le tap actif et l'injection, Surveillance des entrées pour le clavier).
 public enum Permissions {
     public static var accessibilite: Bool { AXIsProcessTrusted() }

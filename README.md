@@ -5,7 +5,9 @@ passe sur le Mac d'à côté, par le réseau local. Pensé pour des Mac sur des 
 universel ne marche pas.
 
 - Mouvements en UDP, un datagramme par événement, en position absolue : pas de dérive ni de saccade quand un paquet se perd.
-- Clavier, clics et presse-papiers texte en TCP, sans touche coincée : tout est relâché si le lien tombe.
+- Clavier, clics et presse-papiers en TCP, sans touche coincée : tout est relâché si le lien tombe.
+- Presse-papiers partagé : texte, images, et fichiers, dossiers ou apps copiés dans le Finder (⌘C sur un Mac, ⌘V dans
+  le Finder de l'autre, jusqu'à 256 Mo). Les mots de passe copiés depuis un gestionnaire ne partent jamais.
 - Chiffré et authentifié de bout en bout (X25519, Ed25519, ChaCha20-Poly1305). Premier contact : le même code à
   6 chiffres s'affiche sur les deux Mac et doit être confirmé des deux côtés.
 - Découverte Bonjour, reconnexion automatique, adresse IP en secours.

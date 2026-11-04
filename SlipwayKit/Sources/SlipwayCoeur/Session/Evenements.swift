@@ -32,8 +32,8 @@ public enum Action: Equatable, Sendable {
     case injecter(Injection)
     /// Le presse-papiers local a peut-être changé : le comparer (changeCount) et le pousser aux pairs si besoin.
     case verifierPressePapiers
-    /// Écrire ce texte dans le presse-papiers local (reçu d'un pair).
-    case ecrirePressePapiers(String)
+    /// Écrire ce contenu dans le presse-papiers local (reçu d'un pair).
+    case ecrirePressePapiers(ContenuPressePapiers)
     /// Fermer le lien avec ce pair (délai dépassé).
     case couperLien(IdPair)
     case journal(String)

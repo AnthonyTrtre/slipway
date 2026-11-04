@@ -28,12 +28,16 @@ final class CurseurEspion: CurseurLocal {
 }
 
 final class PressePapiersFaux: PressePapiersLocal {
-    private let etat = Mutex<(compteur: Int, texte: String, verifications: Int)>((0, "", 0))
+    private let etat = Mutex<(compteur: Int, contenu: ContenuPressePapiers, verifications: Int)>((0, .texte(""), 0))
     func signalerChangementPossible() { etat.withLock { $0.verifications += 1 } }
-    func ecrire(texte: String) -> Int { etat.withLock { $0.texte = texte; $0.compteur += 1; return $0.compteur } }
-    func copier(_ texte: String) { etat.withLock { $0.texte = texte; $0.compteur += 1 } }
+    func ecrire(_ contenu: ContenuPressePapiers, fini: @escaping @Sendable (Int?) -> Void) {
+        fini(etat.withLock { $0.contenu = contenu; $0.compteur += 1; return $0.compteur })
+    }
+    func copier(_ texte: String) { copier(contenu: .texte(texte)) }
+    func copier(contenu: ContenuPressePapiers) { etat.withLock { $0.contenu = contenu; $0.compteur += 1 } }
     var compteur: Int { etat.withLock { $0.compteur } }
-    var texte: String { etat.withLock { $0.texte } }
+    var contenu: ContenuPressePapiers { etat.withLock { $0.contenu } }
+    var texte: String { if case .texte(let t) = contenu { t } else { "" } }
     var verifications: Int { etat.withLock { $0.verifications } }
 }
 
@@ -155,10 +159,10 @@ struct MacSimule {
     let horloge: HorlogeTest
     let identite: Identite
 
-    init(nom: String, graine: UInt8, ecrans: [Ecran], horloge: HorlogeTest) {
+    init(nom: String, graine: UInt8, ecrans: [Ecran], horloge: HorlogeTest, capacites: Capacites = .toutes) {
         self.horloge = horloge
         identite = try! Identite(brut: (0..<32).map { UInt8($0) &+ graine })
-        let config = ConfigurationMoteur(identite: identite, nom: nom, portUDP: 24851, ecransLocaux: ecrans)
+        let config = ConfigurationMoteur(identite: identite, nom: nom, capacites: capacites, portUDP: 24851, ecransLocaux: ecrans)
         moteur = Moteur(config: config, horloge: horloge, injecteur: injecteur, curseur: curseur, pressePapiers: pressePapiers,
                         magasin: magasin, observateur: observateur)
     }
@@ -175,9 +179,10 @@ struct Banc {
     var lienA: LienTest!
     var lienB: LienTest!
 
-    init(appairesDAvance: Bool = true) {
+    init(appairesDAvance: Bool = true, capacitesB: Capacites = .toutes) {
         a = MacSimule(nom: "A", graine: 1, ecrans: [Ecran(id: 1, cadre: Rect(x: 0, y: 0, largeur: 1512, hauteur: 982), principal: true)], horloge: horloge)
-        b = MacSimule(nom: "B", graine: 101, ecrans: [Ecran(id: 1, cadre: Rect(x: 0, y: 0, largeur: 1920, hauteur: 1080), principal: true)], horloge: horloge)
+        b = MacSimule(nom: "B", graine: 101, ecrans: [Ecran(id: 1, cadre: Rect(x: 0, y: 0, largeur: 1920, hauteur: 1080), principal: true)], horloge: horloge,
+                      capacites: capacitesB)
         if appairesDAvance {
             a.magasin.memoriser(clePublique: b.identite.clePublique, nom: "B")
             b.magasin.memoriser(clePublique: a.identite.clePublique, nom: "A")
