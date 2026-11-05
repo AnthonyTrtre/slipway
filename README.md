@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo/logo.svg" width="160" alt="Icône de Slipway"></p>
+
 # Slipway
 
 Une souris, un clavier et un presse-papiers pour plusieurs Mac. On pousse le curseur contre le bord de l'écran et il
